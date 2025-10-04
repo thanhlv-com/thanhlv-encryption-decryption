@@ -22,6 +22,7 @@ var (
 	encryptInput     string
 	encryptOutput    string
 	encryptKey       string
+	encryptKeyEnv    string
 	encryptText      string
 	encryptFile      string
 )
@@ -29,11 +30,10 @@ var (
 func init() {
 	encryptCmd.Flags().StringVarP(&encryptAlgorithm, "algorithm", "a", "aes-256-cbc", "Encryption algorithm (aes-256-cbc, rsa)")
 	encryptCmd.Flags().StringVarP(&encryptKey, "key", "k", "", "Encryption key (base64 encoded)")
+	encryptCmd.Flags().StringVarP(&encryptKeyEnv, "key-env", "e", "", "Environment variable name containing the encryption key (base64 encoded)")
 	encryptCmd.Flags().StringVarP(&encryptText, "text", "t", "", "Text to encrypt")
 	encryptCmd.Flags().StringVarP(&encryptFile, "file", "f", "", "File to encrypt")
 	encryptCmd.Flags().StringVarP(&encryptOutput, "output", "o", "", "Output file (optional)")
-
-	encryptCmd.MarkFlagRequired("key")
 }
 
 func runEncrypt(cmd *cobra.Command, args []string) {
@@ -50,9 +50,34 @@ func runEncrypt(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Validate key input
+	if encryptKey == "" && encryptKeyEnv == "" {
+		fmt.Println("Error: Either --key or --key-env must be specified")
+		os.Exit(1)
+	}
+
+	if encryptKey != "" && encryptKeyEnv != "" {
+		fmt.Println("Error: Cannot specify both --key and --key-env")
+		os.Exit(1)
+	}
+
+	// Get the key value
+	var keyValue string
+	if encryptKeyEnv != "" {
+		keyValue = os.Getenv(encryptKeyEnv)
+		if keyValue == "" {
+			fmt.Printf("Error: Environment variable '%s' is not set or empty\n", encryptKeyEnv)
+			os.Exit(1)
+		}
+		utils.DebugLogf("Using key from environment variable: %s", encryptKeyEnv)
+	} else {
+		keyValue = encryptKey
+		utils.DebugLogf("Using key from command line flag")
+	}
+
 	// Decode base64 key
-	utils.DebugLogf("Decoding base64 key of length: %d", len(encryptKey))
-	keyBytes, err := base64.StdEncoding.DecodeString(encryptKey)
+	utils.DebugLogf("Decoding base64 key of length: %d", len(keyValue))
+	keyBytes, err := base64.StdEncoding.DecodeString(keyValue)
 	if err != nil {
 		fmt.Printf("Error decoding base64 key: %v\n", err)
 		os.Exit(1)
