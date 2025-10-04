@@ -13,7 +13,34 @@ A Go application that supports encryption and decryption using various algorithm
 
 ## Installation
 
-### Option 1: Build from Source
+### Option 1: Automated Installation (Recommended)
+
+#### Linux/macOS
+```bash
+# Install latest version
+curl -sSL https://raw.githubusercontent.com/thanhlv-com/thanhlv-encryption-decryption/main/install.sh | bash
+
+# Install specific version
+curl -sSL https://raw.githubusercontent.com/thanhlv-com/thanhlv-encryption-decryption/main/install.sh | bash -s -- v1.1.0
+```
+
+#### Windows (PowerShell as Administrator)
+```powershell
+# Install latest version
+PowerShell -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/thanhlv-com/thanhlv-encryption-decryption/main/install.ps1'))"
+
+# Install specific version
+$env:VERSION='v1.2.0'; PowerShell -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/thanhlv-com/thanhlv-encryption-decryption/main/install.ps1'))"
+```
+
+The automated installer will:
+- Detect your platform (OS and architecture)
+- Download the appropriate binary from GitHub releases
+- Install to `/usr/local/bin` (Linux/macOS) or `Program Files` (Windows)
+- Add to system PATH
+- Verify the installation
+
+### Option 2: Build from Source
 
 ```bash
 # Clone the repository
@@ -23,13 +50,13 @@ cd thanhlv-encryption-decryption
 # Build for current platform
 make build
 
-# Cross-compile for all platforms
-make cross-compile
+# build-all for all platforms
+make build-all
 ```
 
-### Option 2: Download Pre-built Binaries
+### Option 3: Download Pre-built Binaries
 
-Download the appropriate binary for your platform from the `build/` directory after running `make cross-compile`.
+Download the appropriate binary for your platform from the [GitHub releases](https://github.com/thanhlv-com/thanhlv-encryption-decryption/releases) page.
 
 ## Usage
 
