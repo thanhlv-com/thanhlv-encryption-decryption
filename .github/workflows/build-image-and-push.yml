@@ -1,26 +1,67 @@
-name: Build and Push Docker Image
+name: Build, Release and Push Docker Image
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (must match existing git tag, e.g. v1.0.0)'
-        required: true
+        description: 'Optional release tag (e.g. v1.0.0). Leave empty to auto-generate.'
+        required: false
+        default: ''
         type: string
 
+permissions:
+  contents: write
+
 jobs:
-  build-and-push:
+  build-release-and-push:
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/thanhlv-ed
 
     steps:
-      - name: Checkout code from tag version
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version }}
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.version }}" ]; then
+            tag="${{ inputs.version }}"
+          else
+            short_sha="$(git rev-parse --short HEAD)"
+            timestamp="$(date -u +'%Y%m%d-%H%M%S')"
+            tag="v${timestamp}-${short_sha}"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $tag"
+
+      - name: Check tag existence
+        id: tag_check
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          tag="${{ steps.tag.outputs.tag }}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${tag} already exists."
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag ${tag} does not exist."
+          fi
+
+      - name: Checkout existing tag for image build
+        if: steps.tag_check.outputs.tag_exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout "refs/tags/${{ steps.tag.outputs.tag }}"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -28,16 +69,55 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Check image existence
+        id: image_check
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_ref="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
+
+          if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
+            echo "image_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image $image_ref already exists. Skipping all remaining steps."
+          else
+            echo "image_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image $image_ref not found. Continue pipeline."
+          fi
+
+      - name: Build binaries for all environments
+        if: steps.tag_check.outputs.tag_exists == 'false' && steps.image_check.outputs.image_exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          make build-all VERSION=${{ steps.tag.outputs.tag }}
+
+      - name: Create release and upload binaries
+        if: steps.tag_check.outputs.tag_exists == 'false' && steps.image_check.outputs.image_exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.tag.outputs.tag }}" build/* \
+            --title "Release ${{ steps.tag.outputs.tag }}" \
+            --generate-notes
+
+      - name: Set up Docker Buildx
+        if: steps.image_check.outputs.image_exists == 'false'
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract metadata
+        if: steps.image_check.outputs.image_exists == 'false'
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/thanhlv-ed
+          images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ inputs.version }}
+            type=raw,value=${{ steps.tag.outputs.tag }}
             type=raw,value=latest
 
       - name: Build and push Docker image
+        if: steps.image_check.outputs.image_exists == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .
